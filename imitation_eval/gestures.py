@@ -159,3 +159,23 @@ def build_trajectory(gesture: Gesture, arms: str, reps: int = 5, speed: float = 
             angles.append([pf[name] for pf in per_frame])
             times.append([ft for ft, _ in frames])
     return Trajectory(names, angles, times, rep_starts)
+
+
+def sample_trajectory(traj: Trajectory, t: float, start: Dict[str, float]) -> List[float]:
+    """
+    Target angle of every joint in traj.names at time t (seconds from start),
+    easing between keyframes with a minimum-jerk profile (smooth start/stop,
+    like NAO's own angleInterpolation). `start` holds each joint's angle at t=0.
+    """
+    out = []
+    for name, ang, tm in zip(traj.names, traj.angles, traj.times):
+        kt = [0.0] + list(tm)
+        kv = [start[name]] + list(ang)
+        if t >= kt[-1]:
+            out.append(kv[-1])
+            continue
+        i = max(k for k in range(len(kt) - 1) if kt[k] <= t)
+        s = (t - kt[i]) / (kt[i + 1] - kt[i])
+        s = s * s * s * (10 - 15 * s + 6 * s * s)
+        out.append(kv[i] + (kv[i + 1] - kv[i]) * s)
+    return out

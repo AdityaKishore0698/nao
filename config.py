@@ -8,6 +8,9 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).parent / "config.json"
 
 _DEFAULTS = {
+    "robot": "qibullet",          # qibullet (simulated NAO) | kinematic | nao (physical)
+    "sim_posture": "Stand",
+    "sim_speech": True,           # speak instructions with espeak if installed
     "nao_ip": "172.29.1.216",
     "nao_port": 9559,
     "nao_posture": "Sit",

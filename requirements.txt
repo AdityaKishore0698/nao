@@ -4,7 +4,9 @@ scipy==1.10.1
 opencv-python
 mediapipe==0.10.5
 pyrealsense2
-qi==3.1.5
+qi==3.1.5            # physical NAO only
+pybullet==3.2.7
+qibullet==1.4.6      # simulated NAO (default)
 pillow<11
 pymongo
 # analysis + tests

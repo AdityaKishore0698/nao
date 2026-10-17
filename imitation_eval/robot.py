@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .gestures import READY, Trajectory, side_pose
+from .gestures import READY, Trajectory, sample_trajectory, side_pose
 from .nao_kinematics import SENSED_JOINTS
 
 LED_BLUE, LED_GREEN, LED_WHITE = 0x0000FF, 0x00FF00, 0xFFFFFF
@@ -115,13 +115,14 @@ class NaoRobot:
 
 
 class SimulatedRobot:
-    """Keyframe interpolation in place of NAO. realtime=False returns instantly."""
+    """Pure keyframe interpolation (no physics, no display) — for tests and fast
+    dry runs. realtime=False returns instantly. For experiments use
+    sim_robot.QiBulletNao, the physics-simulated NAO."""
 
     def __init__(self, realtime=False, verbose=True):
         self.realtime = realtime
         self.verbose = verbose
-        ready = {**side_pose(READY, "L"), **side_pose(READY, "R")}
-        self._current = {n: ready[n] for n in SENSED_JOINTS}
+        self._current = {**side_pose(READY, "L"), **side_pose(READY, "R")}
 
     def prepare(self, posture="Sit"):
         pass
@@ -142,17 +143,15 @@ class SimulatedRobot:
     def perform(self, traj: Trajectory, sample_hz=50.0) -> RobotRecording:
         start = time.monotonic()
         t_rel = np.arange(0.0, traj.duration + 1e-9, 1.0 / sample_hz)
-        cols = []
-        for name in SENSED_JOINTS:
-            if name in traj.names:
-                k = traj.names.index(name)
-                kt = [0.0] + list(traj.times[k])
-                kv = [self._current[name]] + list(traj.angles[k])
-                col = np.interp(t_rel, kt, kv)
-            else:
-                col = np.full_like(t_rel, self._current[name])
-            cols.append(col)
-            self._current[name] = col[-1]
+        idx = [traj.names.index(n) if n in traj.names else None for n in SENSED_JOINTS]
+        begin = {n: self._current.get(n, 0.0) for n in traj.names}
+        rows = []
+        for t in t_rel:
+            targets = sample_trajectory(traj, t, begin)
+            rows.append([targets[i] if i is not None else self._current[n]
+                         for n, i in zip(SENSED_JOINTS, idx)])
+        angles = np.asarray(rows)
+        self._current.update(zip(traj.names, sample_trajectory(traj, traj.duration, begin)))
         if self.realtime:
             time.sleep(traj.duration)
-        return RobotRecording(start + t_rel, np.stack(cols, axis=1))
+        return RobotRecording(start + t_rel, angles)

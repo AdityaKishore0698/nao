@@ -47,7 +47,8 @@ def main():
             for r in rows:
                 r.update(participant=meta["participant"], group=meta["group"], age=meta["age"],
                          session_id=meta["session_id"], gesture=tmeta["gesture"],
-                         trial_arms=arms, source=meta.get("source", ""))
+                         trial_arms=arms, source=meta.get("source", ""),
+                         robot=meta.get("robot", ""))
             storage.append_results(out, rows)
             n += 1
     print(f"Rescored {n} trials -> {out}")

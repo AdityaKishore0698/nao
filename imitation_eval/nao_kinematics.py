@@ -78,9 +78,13 @@ def _rot_z(a):
                      np.stack([z, z, o], -1)], -2)
 
 
-def arm_fk(side, shoulder_pitch, shoulder_roll, elbow_yaw, elbow_roll):
+def arm_fk(side, shoulder_pitch, shoulder_roll, elbow_yaw, elbow_roll, elbow_offset=False):
     """
     Forward kinematics for one arm. Angles are scalars or (T,) arrays (rad).
+
+    elbow_offset=False puts the elbow landmark on the upper-arm axis, like a
+    human elbow. NAO's real elbow joint sits 15 mm to the side of that axis,
+    which would read as ~8 deg of elbow flexion on a straight arm.
 
     Returns (shoulder, elbow, wrist), each (T, 3) in the torso frame.
     """
@@ -91,7 +95,8 @@ def arm_fk(side, shoulder_pitch, shoulder_roll, elbow_yaw, elbow_roll):
 
     shoulder = np.tile([0.0, s * SHOULDER_OFFSET_Y, SHOULDER_OFFSET_Z], (T, 1))
     R_sh = _rot_y(sp) @ _rot_z(sr)
-    elbow = shoulder + R_sh @ np.array([UPPER_ARM_LENGTH, s * ELBOW_OFFSET_Y, 0.0])
+    offset_y = s * ELBOW_OFFSET_Y if elbow_offset else 0.0
+    elbow = shoulder + R_sh @ np.array([UPPER_ARM_LENGTH, offset_y, 0.0])
     R_el = R_sh @ _rot_x(ey) @ _rot_z(er)
     wrist = elbow + R_el @ np.array([LOWER_ARM_LENGTH, 0.0, 0.0])
     return shoulder, elbow, wrist

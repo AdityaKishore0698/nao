@@ -8,28 +8,32 @@ Fears et al. (2023) compared robot and participant on, per arm:
 The same function is used for NAO (points from forward kinematics) and for the
 child (points from RealSense + MediaPipe), so both are measured identically.
 
-Conventions (degrees, anatomical, identical for left and right arms):
-    shoulder_flex_ext   0 = arm hanging, +90 = forward horizontal, 180 = overhead,
-                        negative = extension behind the trunk  (sagittal-plane projection)
-    shoulder_abd_add    0 = arm hanging, +90 = out to the side,  180 = overhead,
-                        negative = adduction across the body    (frontal-plane projection)
-    shoulder_rotation   0 = forearm pointing forward with the arm hanging,
-                        positive = external rotation (forearm turns outward)
+Shoulder angles use a Cardan sequence of the humerus relative to the trunk —
+flexion/extension first, then abduction/adduction, then axial rotation — the
+usual clinical-biomechanics (Visual3D-style) decomposition. With d the unit
+upper-arm vector (shoulder -> elbow) in the trunk frame (out, forward, up):
+
+    shoulder_flex_ext   atan2(d.forward, -d.up): 0 = hanging, +90 = forward
+                        horizontal, 180 = overhead, negative = extension
+    shoulder_abd_add    asin(d.out): elevation out of the sagittal plane,
+                        +90 = straight out to the side, negative = adduction
+    shoulder_rotation   forearm direction about the humerus, relative to the
+                        Cardan-rotated forward axis; 0 = forearm forward with the
+                        arm hanging, positive = external rotation
     elbow_flex_ext      0 = straight arm, positive = flexion
 
-Frames where an angle is geometrically undefined (e.g. rotation with a straight
-elbow, flexion with the arm straight out to the side) are returned as NaN; the
-scoring step interpolates over them.
+All angles in degrees and identical in meaning for both arms. Frames where an
+angle is undefined (rotation with a straight elbow; flexion and rotation with
+the arm straight out to the side = gimbal lock) are NaN; scoring interpolates
+over them.
 """
 
 import numpy as np
 
 ANGLE_NAMES = ("shoulder_flex_ext", "shoulder_abd_add", "shoulder_rotation", "elbow_flex_ext")
 
-# Minimum projected length (as a fraction of a unit vector) for an angle to be defined
-MIN_PROJECTION = 0.25          # ~14 deg away from the plane's normal
-MIN_FOREARM_PERP = np.sin(np.radians(20.0))   # rotation needs >= 20 deg elbow flexion
-MAX_OVERHEAD_COS = -0.9        # rotation reference is undefined with the arm straight up
+MAX_ABDUCTION_SIN = np.sin(np.radians(80.0))   # beyond this flexion/rotation are gimbal-locked
+MIN_FOREARM_PERP = np.sin(np.radians(20.0))    # rotation needs >= 20 deg elbow flexion
 
 
 def _normalize(v):
@@ -60,28 +64,6 @@ def trunk_frame(l_shoulder, r_shoulder, mid_hip, fallback_up=None):
     return forward, left, up
 
 
-def _projected_angle(along, across, normal_component):
-    """atan2 in a plane, NaN when the vector is close to the plane's normal.
-    Range is [-90, 270) so that overhead (180) does not wrap to -180."""
-    ang = np.degrees(np.arctan2(along, across))
-    ang = np.where(ang < -90.0, ang + 360.0, ang)
-    in_plane = np.sqrt(along ** 2 + across ** 2)
-    return np.where(in_plane >= MIN_PROJECTION, ang, np.nan)
-
-
-def _minimal_rotation(v, src, dst):
-    """Rotate v by the smallest rotation taking unit src onto unit dst (row-wise)."""
-    axis = np.cross(src, dst)
-    sin_t = np.linalg.norm(axis, axis=-1)
-    cos_t = _dot(src, dst)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        k = axis / sin_t[:, None]
-    k = np.where(sin_t[:, None] > 1e-9, k, 0.0)
-    return (v * cos_t[:, None]
-            + np.cross(k, v) * sin_t[:, None]
-            + k * _dot(k, v)[:, None] * (1.0 - cos_t[:, None]))
-
-
 def arm_angles(side, shoulder, elbow, wrist, frame):
     """
     side: "L" or "R"; shoulder/elbow/wrist: (T, 3); frame: (forward, left, up).
@@ -92,23 +74,29 @@ def arm_angles(side, shoulder, elbow, wrist, frame):
     upper = _normalize(elbow - shoulder)
     fore = _normalize(wrist - elbow)
 
-    u_f, u_o, u_z = _dot(upper, forward), _dot(upper, out), _dot(upper, up)
-    flex = _projected_angle(u_f, -u_z, u_o)
-    abd = _projected_angle(u_o, -u_z, u_f)
+    d_f, d_o, d_u = _dot(upper, forward), _dot(upper, out), _dot(upper, up)
+    not_locked = np.abs(d_o) <= MAX_ABDUCTION_SIN
+
+    # 1) flexion about the lateral axis; range [-90, 270) so overhead doesn't wrap
+    theta = np.arctan2(d_f, -d_u)
+    flex = np.degrees(theta)
+    flex = np.where(flex < -90.0, flex + 360.0, flex)
+    flex = np.where(not_locked, flex, np.nan)
+    # 2) abduction about the flexed forward axis
+    abd = np.degrees(np.arcsin(np.clip(d_o, -1.0, 1.0)))
 
     elbow_flex = np.degrees(np.arccos(np.clip(_dot(upper, fore), -1.0, 1.0)))
 
-    # Rotation: compare the forearm with "forward", carried along with the upper
-    # arm by the minimal rotation from the hanging position (swing-twist).
-    ref = _normalize(_minimal_rotation(forward, -up, upper))
+    # 3) axial rotation: forearm vs the forward axis after flexion + abduction
+    #    (cos(theta) forward + sin(theta) up; abduction rotates about it, so it is unchanged)
+    ref = (np.cos(theta)[:, None] * forward + np.sin(theta)[:, None] * up)
     fore_perp = fore - _dot(fore, upper)[:, None] * upper
     perp_len = np.linalg.norm(fore_perp, axis=-1)
     fore_perp = _normalize(fore_perp)
     sign = -1.0 if side == "L" else 1.0        # makes external rotation positive on both arms
     rot = np.degrees(np.arctan2(sign * _dot(np.cross(ref, fore_perp), upper),
                                 _dot(ref, fore_perp)))
-    rot_ok = (perp_len >= MIN_FOREARM_PERP) & (_dot(upper, up) < -MAX_OVERHEAD_COS)
-    rot = np.where(rot_ok, rot, np.nan)
+    rot = np.where((perp_len >= MIN_FOREARM_PERP) & not_locked, rot, np.nan)
 
     return {
         "shoulder_flex_ext": flex,

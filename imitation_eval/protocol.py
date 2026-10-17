@@ -53,7 +53,7 @@ def trial_plan(gestures, unimanual_arms=("L", "R")):
 
 
 def run_session(cfg: SessionConfig, robot, start_child, stop_child,
-                scoring: ScoringConfig = None, source="live",
+                scoring: ScoringConfig = None, source="live", robot_type="unknown",
                 on_trial: Callable = None):
     """
     robot: NaoRobot or SimulatedRobot.
@@ -63,7 +63,7 @@ def run_session(cfg: SessionConfig, robot, start_child, stop_child,
     scoring = scoring or ScoringConfig()
     d = storage.session_dir(cfg.data_dir, cfg.participant, cfg.session_id)
     storage.save_session_meta(d, {**asdict(cfg), "scoring": asdict(scoring),
-                                  "source": source, "started": datetime.now().isoformat()})
+                                  "source": source, "robot": robot_type, "started": datetime.now().isoformat()})
     all_rows = []
     robot.say(INSTRUCTION)
     for gesture, arms in trial_plan(cfg.gestures):
@@ -85,7 +85,7 @@ def run_session(cfg: SessionConfig, robot, start_child, stop_child,
         for r in rows:
             r.update(participant=cfg.participant, group=cfg.group, age=cfg.age,
                      session_id=cfg.session_id, gesture=gesture, trial_arms=arms,
-                     source=source)
+                     source=source, robot=robot_type)
         storage.append_results(d / "results.csv", rows)
         storage.append_results(f"{cfg.data_dir}/results.csv", rows)
         storage.save_to_mongo(rows, cfg.mongo_uri)

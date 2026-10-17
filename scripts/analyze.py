@@ -25,6 +25,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--results", default="data/results.csv")
     p.add_argument("--include-simulated", action="store_true")
+    p.add_argument("--min-robot-range", type=float, default=0.0,
+                   help="drop angles the robot moves less than this (deg) in a trial; z-normalising "
+                        "a near-constant robot curve makes its DTW cost mostly noise (0 = paper)")
     args = p.parse_args()
 
     df = pd.read_csv(args.results)
@@ -32,6 +35,8 @@ def main():
     if not args.include_simulated:
         df = df[df["source"] != "simulated"]
     df = df[df["group"].isin(["autistic", "neurotypical"])].copy()
+    if args.min_robot_range > 0:
+        df = df[df["robot_range_deg"] >= args.min_robot_range]
     if df["group"].nunique() < 2 or df["participant"].nunique() < 4:
         raise SystemExit("Need scored trials from both groups (and several participants).")
 

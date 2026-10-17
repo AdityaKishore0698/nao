@@ -5,8 +5,9 @@ Use this to tune imitation_eval/gestures.py on the real robot: each gesture
 should move the joints the paper says it does (e.g. bump/give = shoulder
 flexion + elbow extension, wave = 40 deg elbow oscillation).
 
-    python scripts/demo_gestures.py --sim                  # kinematics only
-    python scripts/demo_gestures.py --gestures wave --reps 1   # on NAO
+    python scripts/demo_gestures.py                          # simulated NAO (qiBullet window)
+    python scripts/demo_gestures.py --robot kinematic        # kinematics only, no window
+    python scripts/demo_gestures.py --robot nao --gestures wave --reps 1   # physical NAO
 """
 
 import argparse
@@ -42,17 +43,22 @@ def main():
     p.add_argument("--reps", type=int, default=1)
     p.add_argument("--speed", type=float, default=1.0)
     p.add_argument("--arm", choices=["L", "R"], default="L", help="arm for unimanual gestures")
-    p.add_argument("--sim", action="store_true")
+    cfg = config.load()
+    p.add_argument("--robot", choices=["qibullet", "kinematic", "nao"], default=cfg["robot"])
     args = p.parse_args()
 
-    cfg = config.load()
-    if args.sim:
+    posture = None
+    if args.robot == "kinematic":
         from imitation_eval.robot import SimulatedRobot
         robot = SimulatedRobot(verbose=False)
+    elif args.robot == "qibullet":
+        from imitation_eval.sim_robot import QiBulletNao
+        robot, posture = QiBulletNao(speech=False), cfg["sim_posture"]
     else:
         from imitation_eval.robot import NaoRobot
-        robot = NaoRobot(cfg["nao_ip"], cfg["nao_port"])
-        robot.prepare(cfg["nao_posture"])
+        robot, posture = NaoRobot(cfg["nao_ip"], cfg["nao_port"]), cfg["nao_posture"]
+    if posture:
+        robot.prepare(posture)
     try:
         for g in args.gestures:
             arms = "both" if GESTURES[g].bimanual else args.arm
@@ -62,7 +68,7 @@ def main():
             summarize(rec, arms)
             robot.go_ready()
     finally:
-        robot.finish(cfg["nao_posture"])
+        robot.finish(posture or "Sit")
 
 
 if __name__ == "__main__":

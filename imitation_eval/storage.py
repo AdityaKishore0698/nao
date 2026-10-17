@@ -24,7 +24,7 @@ RESULT_FIELDS = [
     "participant", "group", "age", "session_id", "gesture", "trial_arms",
     "robot_arm", "child_arm", "angle", "dtw_cost", "dtw_cost_per_step", "path_length",
     "scored", "robot_valid_frac", "child_valid_frac", "n_robot", "n_child",
-    "robot_range_deg", "child_range_deg", "source",
+    "robot_range_deg", "child_range_deg", "source", "robot",
 ]
 
 

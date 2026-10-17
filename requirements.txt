@@ -1,0 +1,13 @@
+# Python 3.8 (same as NAO_Project's "NAO" conda env; libqi wheels need it)
+numpy==1.24.3
+scipy==1.10.1
+opencv-python
+mediapipe==0.10.5
+pyrealsense2
+qi==3.1.5
+pillow<11
+pymongo
+# analysis + tests
+pandas<2.1
+statsmodels<0.15
+pytest

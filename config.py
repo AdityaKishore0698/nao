@@ -30,6 +30,9 @@ def load() -> dict:
     # environment overrides (NAO_Project's app.py passes NAO_IP this way)
     if os.environ.get("NAO_IP"):
         cfg["nao_ip"] = os.environ["NAO_IP"]
+    # a relative data_dir is relative to the project folder, not the shell's cwd
+    if not os.path.isabs(cfg["data_dir"]):
+        cfg["data_dir"] = str(Path(__file__).parent / cfg["data_dir"])
     return cfg
 
 

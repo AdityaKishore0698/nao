@@ -37,6 +37,15 @@ class QiBulletNao:
         self.nao = self.manager.spawnNao(self.client, spawn_ground_plane=True)
         assert isinstance(self.nao, NaoVirtual)
         self.gui = gui
+        # Free-standing, NAO topples over when its arms swing up quickly (the
+        # real robot balances actively). The demonstrator never walks, so let it
+        # settle onto its feet, then fix the torso to the world.
+        time.sleep(1.0)
+        body = self.nao.getRobotModel()
+        pos, orn = p.getBasePositionAndOrientation(body, physicsClientId=self.client)
+        p.createConstraint(body, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], pos,
+                           [0, 0, 0, 1], orn, physicsClientId=self.client)
+        self.base_position = pos
         if gui:
             p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=self.client)
             # NAO faces +x; look at it from the front
